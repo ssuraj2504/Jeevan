@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CoolCare Provider Portal</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; background: #eef5f5; color: #173434; }
+      main { width: min(560px, calc(100% - 32px)); margin: 48px auto; background: white; padding: 32px; border-radius: 18px; box-shadow: 0 18px 50px #163c3c1c; }
+      label { display: grid; gap: 6px; margin: 14px 0; font-weight: 650; }
+      input { padding: 12px; border: 1px solid #b7caca; border-radius: 9px; font: inherit; }
+      button { width: 100%; padding: 13px; border: 0; border-radius: 9px; color: white; background: #176b64; font-weight: 750; cursor: pointer; }
+      .confirmation { padding: 18px; background: #e5f8ee; border: 1px solid #8bd3ac; border-radius: 12px; }
+      .eyebrow { color: #16746b; font-weight: 750; text-transform: uppercase; font-size: 12px; letter-spacing: .12em; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Sandbox provider</p>
+      <h1>CoolCare Services</h1>
+      <p>This deterministic portal exists so Jeevan can demonstrate bounded browser automation.</p>
+      <form id="booking-form">
+        <label>Task ID <input name="task_id" aria-label="Task ID" required /></label>
+        <label>Customer address <input name="address" aria-label="Customer address" required /></label>
+        <label>Appointment slot <input name="slot" aria-label="Appointment slot" required /></label>
+        <label>Agreed price <input name="price" aria-label="Agreed price" inputmode="numeric" required /></label>
+        <button type="submit">Confirm appointment</button>
+      </form>
+      <section id="confirmation" hidden></section>
+    </main>
+    <script>
+      document.querySelector('#booking-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        const ref = `JVN-${String(data.get('task_id')).split('-')[0].toUpperCase()}`;
+        const confirmation = document.querySelector('#confirmation');
+        confirmation.hidden = false;
+        confirmation.className = 'confirmation';
+        confirmation.dataset.confirmationRef = ref;
+        confirmation.innerHTML = `<strong>Appointment confirmed</strong><p>Confirmation: ${ref}</p>`;
+        event.currentTarget.hidden = true;
+      });
+    </script>
+  </body>
+</html>

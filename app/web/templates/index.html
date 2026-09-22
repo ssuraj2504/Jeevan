@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Jeevan completes household bookings through voice calls, browser actions, and useful memory." />
+    <title>Jeevan — get everyday tasks handled</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='/favicon.svg') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}" />
+    <script defer src="{{ url_for('static', path='/app.js') }}"></script>
+    <script defer src="{{ url_for('static', path='/voice.js') }}"></script>
+  </head>
+  <body data-booking-adapter="{{ booking_adapter }}" data-public-demo="{{ 'true' if public_demo_mode else 'false' }}">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="Jeevan home">
+        <span class="brand-mark" aria-hidden="true">J</span>
+        <span>Jeevan</span>
+      </a>
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <button class="nav-link is-active" data-view-target="request">Request</button>
+        {% if not public_demo_mode %}<button class="nav-link" data-view-target="operations">Operations</button>{% endif %}
+        {% if not public_demo_mode %}<button class="nav-link" data-view-target="memory">Memory</button>{% endif %}
+      </nav>
+      <div class="mode-badge"><span></span><strong>{{ 'Public sandbox' if public_demo_mode else 'Simulation' }}</strong> {{ 'demo' if public_demo_mode else 'mode' }}</div>
+    </header>
+
+    <main id="main-content">
+      <section class="view is-visible" data-view="request">
+        <div class="hero-shell">
+          <div class="hero-copy">
+            <p class="eyebrow">Your life, with less admin</p>
+            <h1>Tell Jeevan what<br /><em>needs doing.</em></h1>
+            <p class="hero-intro">Jeevan calls providers, checks online options, and completes household bookings within your limits.</p>
+            <div class="trust-row" aria-label="Jeevan capabilities">
+              <span>Voice calls</span><span>Browser actions</span><span>{{ 'Approval controls' if public_demo_mode else 'Editable memory' }}</span>
+            </div>
+          </div>
+
+          <div class="request-card">
+            <section class="voice-panel" aria-labelledby="voice-heading">
+              <div class="voice-heading-row">
+                <div>
+                  <p class="overline">Speak your request</p>
+                  <h2 id="voice-heading">Talk to Jeevan</h2>
+                </div>
+                <span class="voice-indicator" id="voice-indicator" aria-hidden="true"></span>
+              </div>
+              <p class="voice-hint">Try “Book AC servicing this Saturday after 2 PM, under ₹1,000.”</p>
+              {% if public_demo_mode %}<p class="sandbox-note">Public sandbox: provider calls and bookings are simulated. Use fictional details only.</p>{% endif %}
+              <div class="voice-actions">
+                <button class="button button-primary" id="voice-toggle" type="button">🎙 Start listening</button>
+                <button class="button button-secondary" id="voice-stop" type="button" hidden>Stop voice session</button>
+              </div>
+              <p class="voice-status" id="voice-status" role="status" aria-live="polite">Microphone is off.</p>
+              <div class="voice-conversation" id="voice-conversation" aria-live="polite" hidden>
+                <p><strong>You said</strong><span id="voice-heard"></span></p>
+                <p><strong>Jeevan</strong><span id="voice-reply"></span></p>
+              </div>
+              <div class="voice-review" id="voice-review" hidden>
+                <label class="field" for="voice-transcript"><span>Review or edit what Jeevan heard</span></label>
+                <textarea id="voice-transcript" rows="3" aria-describedby="voice-review-hint"></textarea>
+                <p id="voice-review-hint">Jeevan will ask for missing details. Check the task fields below before starting.</p>
+                <div class="voice-review-actions">
+                  <button class="button button-secondary button-small" id="voice-reinterpret" type="button">Update details</button>
+                  <button class="button button-primary button-small" id="voice-start-task" type="button" disabled>Start this task</button>
+                </div>
+              </div>
+            </section>
+            <div class="card-heading">
+              <div>
+                <p class="overline">New task</p>
+                <h2>What should we handle?</h2>
+              </div>
+              <button class="text-button" id="sample-request" type="button">Use sample</button>
+            </div>
+            <form id="request-form">
+              <label class="field field-large">
+                <span>Describe the outcome</span>
+                <textarea id="description" name="description" rows="4" required>Book AC servicing this Saturday after 2 PM, under ₹1,000.</textarea>
+              </label>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Preferred day</span>
+                  <input id="requested-date" name="requested_date" value="Saturday" required />
+                </label>
+                <label class="field">
+                  <span>Time window</span>
+                  <input id="time-window" name="time_window" value="After 2:00 PM" required />
+                </label>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Maximum budget</span>
+                  <span class="input-prefix"><b>₹</b><input id="budget" name="budget" type="number" value="1000" min="1" required /></span>
+                </label>
+                <label class="field">
+                  <span>Address</span>
+                  <input id="address" name="address" placeholder="Use saved home address" />
+                </label>
+              </div>
+              <details class="demo-settings"{% if public_demo_mode %} hidden{% endif %}>
+                <summary>Demo scenario</summary>
+                <label class="field">
+                  <span>Provider behavior</span>
+                  <select id="scenario" name="scenario">
+                    <option value="above_budget">Quote above budget</option>
+                    <option value="happy">Within-budget booking</option>
+                    <option value="no_answer">No answer, then retry</option>
+                    <option value="dropped_call">Dropped call, then recovery</option>
+                    <option value="price_change">Price changes at confirmation</option>
+                    <option value="unavailable">No matching availability</option>
+                  </select>
+                </label>
+              </details>
+              <div class="form-footer">
+                <p><span aria-hidden="true">✓</span> Jeevan asks before exceeding your limits.</p>
+                <button class="button button-primary" type="submit"><span>Start task</span><span aria-hidden="true">→</span></button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <section class="execution-shell" aria-live="polite">
+          <div class="section-heading">
+            <div>
+              <p class="overline">Live execution</p>
+              <h2>From request to result</h2>
+            </div>
+            {% if not public_demo_mode %}<button class="button button-secondary" id="open-ops" type="button">Open operator view</button>{% endif %}
+          </div>
+          <div id="customer-task" class="empty-panel">
+            <div class="empty-icon" aria-hidden="true">↗</div>
+            <h3>No active task</h3>
+            <p>Submit the sample request to watch voice, policy, browser, and memory events appear here.</p>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" data-view="operations">
+        <div class="page-shell">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Human in the loop</p>
+              <h1>Operations console</h1>
+              <p>See what the agent did, why it stopped, and the safest next action.</p>
+            </div>
+            <button class="button button-secondary" id="refresh-ops" type="button">Refresh data</button>
+          </div>
+          <div id="metrics" class="metrics-grid" aria-label="Task metrics"></div>
+          <div class="ops-layout">
+            <section class="queue-panel">
+              <div class="panel-toolbar">
+                <div>
+                  <p class="overline">Task queue</p>
+                  <h2>Recent work</h2>
+                </div>
+                <label class="compact-field"><span class="sr-only">Filter tasks</span><select id="status-filter"><option value="">All statuses</option><option value="awaiting_approval">Needs approval</option><option value="needs_human">Needs operator</option><option value="retry_scheduled">Retry scheduled</option><option value="completed">Completed</option></select></label>
+              </div>
+              <div id="task-queue" class="task-queue"></div>
+            </section>
+            <aside id="ops-detail" class="detail-panel">
+              <div class="empty-panel compact">
+                <div class="empty-icon" aria-hidden="true">◎</div>
+                <h3>Select a task</h3>
+                <p>Its constraints, transcript, audit trail, and controls will appear here.</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" data-view="memory">
+        <div class="page-shell memory-page">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Long-term context</p>
+              <h1>Memory you can inspect</h1>
+              <p>Jeevan stores explicit preferences and completed-task history with a visible source.</p>
+            </div>
+          </div>
+          <div class="memory-layout">
+            <section class="memory-list-panel">
+              <div class="panel-toolbar">
+                <div><p class="overline">Demo user</p><h2>Saved preferences</h2></div>
+                <span class="privacy-chip">Isolated by user</span>
+              </div>
+              <div id="memory-list"></div>
+            </section>
+            <section class="memory-editor">
+              <p class="overline">Add or update</p>
+              <h2>Teach Jeevan something useful</h2>
+              <form id="memory-form">
+                <label class="field"><span>Memory key</span><input id="memory-key" placeholder="preferred_provider" required pattern="[a-z0-9_]+" /></label>
+                <label class="field"><span>Value</span><input id="memory-value" placeholder="CoolCare Services" required /></label>
+                <label class="field"><span>Source</span><input id="memory-source" value="user" required /></label>
+                <button class="button button-primary full-width" type="submit">Save explicit preference</button>
+              </form>
+              <div class="memory-note"><strong>One-time details stay with the task.</strong><p>Instructions such as “this Saturday only” are not promoted to long-term memory.</p></div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <footer><span>Jeevan</span><p>A production-minded portfolio prototype for household task completion.</p>{% if not public_demo_mode %}<a href="/docs">API docs ↗</a>{% endif %}</footer>
+  </body>
+</html>

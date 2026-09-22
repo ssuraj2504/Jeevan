@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: jeevan
+      POSTGRES_USER: jeevan
+      POSTGRES_PASSWORD: jeevan-local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jeevan"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - jeevan-data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://jeevan:jeevan-local@db:5432/jeevan
+      BOOKING_ADAPTER: simulated
+      VOICE_ADAPTER: simulated
+      PUBLIC_BASE_URL: http://api:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  jeevan-data:
