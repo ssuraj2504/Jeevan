@@ -32,7 +32,7 @@ The default configuration uses deterministic adapters and requires no API keys. 
 
 API documentation is available at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
 
-The [75-second walkthrough](DEMO_WALKTHROUGH.md) shows an honest portfolio narrative. A silent [scripted capture tool](tools/record_scripted_demo.py) can produce a reproducible screen recording with mock speech input and an on-screen simulation label; record your own microphone for an application video.
+The [75-second walkthrough](DEMO_WALKTHROUGH.md) shows an honest portfolio narrative. A [silent scripted UI capture](https://github.com/ssuraj2504/Jeevan/releases/tag/v0.1.0) shows the workflow with mocked speech input and simulated provider actions. The [capture tool](tools/record_scripted_demo.py) reproduces it; record your own microphone for an application video.
 
 ## Public sandbox mode
 
