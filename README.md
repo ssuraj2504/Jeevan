@@ -1,5 +1,7 @@
 # Jeevan
 
+[![CI](https://github.com/ssuraj2504/Jeevan/actions/workflows/ci.yml/badge.svg)](https://github.com/ssuraj2504/Jeevan/actions/workflows/ci.yml)
+
 **Voice and browser agent for completing household bookings.**
 
 Jeevan accepts a spoken outcome such as “Book AC servicing this Saturday after 2 PM, under ₹1,000,” prepares a reviewable task draft, calls a provider, extracts a structured quote and slot, checks the user's limits, obtains approval when required, completes the booking through a bounded browser action, and stores provider evidence. An operations console exposes every decision and lets a person recover a blocked task.
@@ -124,7 +126,7 @@ ruff check app tests
 
 The suite covers valid and forbidden state transitions, budget boundaries, idempotent request replay, stale approval rejection, retry recovery, changed prices, operator recovery, tenant-scoped memory queries, authenticated webhook deduplication, and the invariant that a declined quote creates no booking.
 
-To verify the provider portal and both local/public voice flows with a real browser while the server is running:
+To verify the provider portal, the voice-to-Playwright booking path, and both local/public voice flows with a real browser while the server is running:
 
 ```powershell
 $env:RUN_BROWSER_E2E = "1"

@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
 import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from app.models import ProviderBooking
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MOCK_SPEECH_SCRIPT = """
@@ -43,8 +50,10 @@ Object.defineProperty(window, 'speechSynthesis', {
 """
 
 
-@pytest.fixture(params=[False, True], ids=["local", "public-demo"])
-def voice_ui_server(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[str]:
+@contextmanager
+def _serve_voice_ui(
+    tmp_path: Path, *, public_demo: bool = False, booking_adapter: str = "simulated"
+) -> Iterator[str]:
     """Serve the real app with isolated persistence for a single browser journey."""
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -55,9 +64,9 @@ def voice_ui_server(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[
     env["DATABASE_URL"] = f"sqlite:///{(tmp_path / 'voice-ui.db').as_posix()}"
     env["PUBLIC_BASE_URL"] = base_url
     env["VOICE_ADAPTER"] = "simulated"
-    env["BOOKING_ADAPTER"] = "simulated"
-    env["PUBLIC_DEMO_MODE"] = "true" if request.param else "false"
-    if request.param:
+    env["BOOKING_ADAPTER"] = booking_adapter
+    env["PUBLIC_DEMO_MODE"] = "true" if public_demo else "false"
+    if public_demo:
         env["DEMO_SESSION_SECRET"] = "scripted-browser-test-session-secret-2026"
     server = subprocess.Popen(
         [
@@ -90,6 +99,18 @@ def voice_ui_server(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[
         except subprocess.TimeoutExpired:
             server.kill()
             server.communicate(timeout=5)
+
+
+@pytest.fixture(params=[False, True], ids=["local", "public-demo"])
+def voice_ui_server(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[str]:
+    with _serve_voice_ui(tmp_path, public_demo=request.param) as base_url:
+        yield base_url
+
+
+@pytest.fixture()
+def playwright_voice_ui_server(tmp_path: Path) -> Iterator[str]:
+    with _serve_voice_ui(tmp_path, booking_adapter="playwright") as base_url:
+        yield base_url
 
 
 @pytest.mark.browser
@@ -163,6 +184,8 @@ def test_spoken_follow_up_completes_missing_details_before_single_booking(
 ) -> None:
     from playwright.sync_api import expect, sync_playwright
 
+    india_time = timezone(timedelta(hours=5, minutes=30))
+    appointment_date = datetime.now(india_time).date() + timedelta(days=30)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context()
@@ -182,10 +205,13 @@ def test_spoken_follow_up_completes_missing_details_before_single_booking(
             assert page.evaluate("fetch('/api/v1/tasks').then(r => r.json())") == []
 
             page.wait_for_function("window.__recognizers.length >= 2")
-            page.evaluate("window.__say('26 september 2026, after 2 pm, budget is 2500')")
+            page.evaluate(
+                "transcript => window.__say(transcript)",
+                f"{appointment_date:%d %B %Y}, after 2 pm, budget is 2500",
+            )
 
             expect(page.locator("#voice-start-task")).to_be_enabled()
-            expect(page.locator("#requested-date")).to_have_value("2026-09-26")
+            expect(page.locator("#requested-date")).to_have_value(appointment_date.isoformat())
             expect(page.locator("#time-window")).to_have_value("After 2:00 PM")
             expect(page.locator("#budget")).to_have_value("2500")
             assert page.evaluate("fetch('/api/v1/tasks').then(r => r.json())") == []
@@ -200,6 +226,78 @@ def test_spoken_follow_up_completes_missing_details_before_single_booking(
             assert task["budget_paise"] == 250_000
             assert task["confirmation_ref"]
             assert sum(event["event_type"] == "browser.confirmed" for event in task["events"]) == 1
+            assert not browser_errors, browser_errors
+        finally:
+            browser.close()
+
+
+@pytest.mark.browser
+@pytest.mark.skipif(os.getenv("RUN_BROWSER_E2E") != "1", reason="set RUN_BROWSER_E2E=1")
+def test_voice_request_books_through_playwright_portal_after_explicit_approval(
+    playwright_voice_ui_server: str, tmp_path: Path
+) -> None:
+    """Speech input, review, approval, and sandbox portal must form one journey."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        context = browser.new_context()
+        context.add_init_script(MOCK_SPEECH_SCRIPT)
+        page = context.new_page()
+        browser_errors: list[str] = []
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        try:
+            india_time = timezone(timedelta(hours=5, minutes=30))
+            appointment_date = datetime.now(india_time).date() + timedelta(days=30)
+            page.goto(playwright_voice_ui_server)
+            page.get_by_role("button", name="Start listening").click()
+            page.evaluate(
+                "transcript => window.__say(transcript)",
+                f"Book AC servicing on {appointment_date:%d %B %Y} after 2 PM under Rs 500",
+            )
+
+            expect(page.locator("#voice-review")).to_be_visible()
+            expect(page.locator("#voice-start-task")).to_be_enabled()
+            expect(page.locator("#requested-date")).to_have_value(appointment_date.isoformat())
+            expect(page.locator("#budget")).to_have_value("500")
+            assert page.evaluate("fetch('/api/v1/tasks').then(r => r.json())") == []
+
+            page.wait_for_function("window.__recognizers.length >= 2")
+            page.evaluate("window.__say('start task')")
+            expect(page.locator("#customer-task .approval-card")).to_be_visible()
+            pending = page.evaluate(
+                "fetch('/api/v1/tasks').then(r => r.json()).then(tasks => tasks[0])"
+            )
+            assert pending["status"] == "awaiting_approval"
+            assert pending["quote_paise"] > pending["budget_paise"]
+            assert pending["confirmation_ref"] is None
+
+            engine = create_engine(f"sqlite:///{(tmp_path / 'voice-ui.db').as_posix()}")
+            with Session(engine) as db:
+                assert db.scalars(select(ProviderBooking)).all() == []
+
+            page.wait_for_function("window.__recognizers.length >= 3")
+            page.evaluate("window.__say('approve quote')")
+            expect(page.locator("#customer-task .status-pill")).to_have_text("Completed")
+            completed = page.evaluate(
+                "fetch('/api/v1/tasks').then(r => r.json()).then(tasks => tasks[0])"
+            )
+            assert completed["id"] == pending["id"]
+            assert completed["status"] == "completed"
+            assert completed["confirmation_ref"] == f"JVN-{pending['id'].split('-')[0].upper()}"
+            evidence = [
+                event for event in completed["events"]
+                if event["event_type"] == "browser.confirmed"
+            ]
+            assert len(evidence) == 1
+            assert json.loads(evidence[0]["data_json"])["source"] == "playwright_provider_portal"
+            with Session(engine) as db:
+                bookings = db.scalars(select(ProviderBooking)).all()
+                assert len(bookings) == 1
+                assert bookings[0].task_id == completed["id"]
+                assert bookings[0].confirmation_ref == completed["confirmation_ref"]
+                assert bookings[0].slot == completed["quoted_slot"]
+                assert bookings[0].price_paise == completed["quote_paise"]
             assert not browser_errors, browser_errors
         finally:
             browser.close()
